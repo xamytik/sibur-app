@@ -8,7 +8,7 @@ if not exist venv (
 
 echo [2/3] Активирую окружение и проверяю библиотеки...
 call venv\Scripts\activate.bat
-pip install streamlit opencv-python numpy
+pip install -q -r requirements.txt
 
 echo [3/3] Запускаю интерфейс...
 python -m streamlit run app.py
