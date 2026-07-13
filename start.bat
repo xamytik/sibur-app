@@ -1,64 +1,78 @@
+<# : batch script
 @echo off
+setlocal
 chcp 65001 >nul
-setlocal EnableDelayedExpansion
-
-for /f %%a in ('echo prompt $E^| cmd') do set "ESC=%%a"
-
-set "P=!ESC![38;2;255;182;193m"
-set "B=!ESC![1m"
-set "R=!ESC![0m"
-set "G=!ESC![90m"
-
-cls
-
-echo.
-echo !P!!B!  oooooo     oooo ooooo  .oooooo..o ooooo   .oooooo.   ooooo      ooo!R!
-echo !P!!B!   '888.     .8'  '888' d8P'    'Y8  '888'  d8P'  'Y8b  '888b.   .8888'!R!
-echo !P!!B!    '888.   .8'    888  Y88bo.        888  888      888   8 'Y88. .P888'!R!
-echo !P!!B!     '888. .8'     888   '"Y8888o.    888  888      888   8   '888'  888!R!
-echo !P!!B!      '888.8'      888       '"Y88b   888  888      888   8    Y88   888!R!
-echo !P!!B!       '888'       888  oo     .d8P   888  '88b    d88'   8     Y8   888!R!
-echo !P!!B!        '8'       o888o 8""88888P'   o888o  'Y8bood8P'   o8o     Y   o888o!R!
-echo.
-echo !P!!B!          ~~~ Vision-Control : SIBUR Enterprise ~~~!R!
-echo !G!  ================================================================!R!
-echo.
-
-if not exist venv (
-    echo !P!  ^> [1/3] Sozdayu virtualnoe okruzhenie...!R!
-    python -m venv venv
-    echo !P!  [OK] Okruzhenie sozdano!!R!
-) else (
-    echo !P!  [OK] [1/3] Virtualnoe okruzhenie uzhe suschestvuet!R!
-)
-
-echo.
-echo !P!  ^> [2/3] Aktiviruju okruzhenie i ustanavlivaju biblioteki...!R!
-call venv\Scripts\activate.bat
-pip install -q -r requirements.txt
-echo !P!  [OK] Vse biblioteki ustanovleny!!R!
-
-echo.
-echo !P!  ^> [3/3] Zapuskayu prilozhenie...!R!
-echo !G!  ================================================================!R!
-echo.
-echo !P!!B!            http://localhost:8501!R!
-echo.
-echo !G!  ================================================================!R!
-echo.
-
-python -m streamlit run app.py
-
-echo.
-echo !G!  ================================================================!R!
-echo.
-echo !P!!B!   ██████╗ ██╗   ██╗    ██╗  ██╗ █████╗ ███╗   ███╗██╗   ██╗████████╗██╗██╗  ██╗!R!
-echo !P!!B!   ██╔══██╗╚██╗ ██╔╝    ╚██╗██╔╝██╔══██╗████╗ ████║╚██╗ ██╔╝╚══██╔══╝██║██║ ██╔╝!R!
-echo !P!!B!   ██████╔╝ ╚████╔╝      ╚███╔╝ ███████║██╔████╔██║ ╚████╔╝    ██║   ██║█████╔╝!R!
-echo !P!!B!   ██╔══██╗  ╚██╔╝       ██╔██╗ ██╔══██║██║╚██╔╝██║  ╚██╔╝     ██║   ██║██╔═██╗!R!
-echo !P!!B!   ██████╔╝   ██║       ██╔╝ ██╗██║  ██║██║ ╚═╝ ██║   ██║      ██║   ██║██║  ██╗!R!
-echo !P!!B!   ╚═════╝    ╚═╝       ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝   ╚═╝      ╚═╝   ╚═╝╚═╝  ╚═╝!R!
-echo.
-echo !G!  ================================================================!R!
-echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~f0"
 pause
+exit /b
+: end batch / begin PowerShell #>
+
+# ===== Vision Control - SIBUR Enterprise =====
+Set-Location (Split-Path -Parent $MyInvocation.MyCommand.Path)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$Host.UI.RawUI.WindowTitle = "Vision Control - SIBUR Enterprise"
+
+$pk = @{ ForegroundColor = 'Magenta' }
+$gr = @{ ForegroundColor = 'DarkGray' }
+$gn = @{ ForegroundColor = 'Green' }
+
+Clear-Host
+
+# ---- HEADER ----
+Write-Host ""
+Write-Host "  ╔══════════════════════════════════════════════════════════╗" @pk
+Write-Host "  ║                                                        ║" @pk
+Write-Host "  ║        VISION CONTROL  :  SIBUR Enterprise             ║" @pk
+Write-Host "  ║                                                        ║" @pk
+Write-Host "  ╚══════════════════════════════════════════════════════════╝" @pk
+Write-Host ""
+
+# ---- STEP 1: Virtual Environment ----
+if (-not (Test-Path "venv")) {
+    Write-Host "  [1/3] Creating virtual environment..." @pk
+    & python -m venv venv
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "        Done!" @gn
+    } else {
+        Write-Host "        ERROR: Python not found. Install from python.org" -ForegroundColor Red
+        Read-Host "  Press Enter to exit"
+        exit 1
+    }
+} else {
+    Write-Host "  [1/3] Virtual environment ready" @gn
+}
+
+Write-Host ""
+
+# ---- STEP 2: Dependencies ----
+Write-Host "  [2/3] Installing dependencies..." @pk
+. .\venv\Scripts\Activate.ps1
+& pip install -q -r requirements.txt
+Write-Host "        Done!" @gn
+
+Write-Host ""
+
+# ---- STEP 3: Launch ----
+Write-Host "  [3/3] Launching application..." @pk
+Write-Host ("  " + "-" * 58) @gr
+Write-Host ""
+Write-Host "              http://localhost:8501" @pk
+Write-Host ""
+Write-Host ("  " + "-" * 58) @gr
+Write-Host ""
+
+& python -m streamlit run app.py
+
+# ---- FOOTER ----
+Write-Host ""
+Write-Host ("  " + "=" * 82) @gr
+Write-Host ""
+Write-Host "   ██████╗ ██╗   ██╗    ██╗  ██╗ █████╗ ███╗   ███╗██╗   ██╗████████╗██╗██╗  ██╗" @pk
+Write-Host "   ██╔══██╗╚██╗ ██╔╝    ╚██╗██╔╝██╔══██╗████╗ ████║╚██╗ ██╔╝╚══██╔══╝██║██║ ██╔╝" @pk
+Write-Host "   ██████╔╝ ╚████╔╝      ╚███╔╝ ███████║██╔████╔██║ ╚████╔╝    ██║   ██║█████╔╝ " @pk
+Write-Host "   ██╔══██╗  ╚██╔╝       ██╔██╗ ██╔══██║██║╚██╔╝██║  ╚██╔╝     ██║   ██║██╔═██╗ " @pk
+Write-Host "   ██████╔╝   ██║       ██╔╝ ██╗██║  ██║██║ ╚═╝ ██║   ██║      ██║   ██║██║  ██╗" @pk
+Write-Host "   ╚═════╝    ╚═╝       ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝   ╚═╝      ╚═╝   ╚═╝╚═╝  ╚═╝" @pk
+Write-Host ""
+Write-Host ("  " + "=" * 82) @gr
+Write-Host ""
