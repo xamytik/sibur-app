@@ -4,7 +4,7 @@ import numpy as np
 import math
 import tempfile
 import os
-import matplotlib.pyplot as plt
+import time
 
 
 def calculate_area(mask, height_m, fov_deg, image_width_px, theta_deg=0.0):
@@ -45,8 +45,8 @@ def process_frame(frame, h_min, s_min, v_min, h_max, s_max, v_max):
     colored_mask = np.zeros_like(img_rgb)
     colored_mask[mask_cleaned > 0] = [0, 255, 0]  # Зеленый цвет
 
-    # Смешиваем оригинальный кадр и зеленую маску
-    result_overlay = cv2.addWeighted(img_rgb, 0.7, colored_mask, 0.4, 0)
+    # FIX #5: сумма коэффициентов = 1.0 (было 0.7+0.4=1.1 → пересвет)
+    result_overlay = cv2.addWeighted(img_rgb, 0.7, colored_mask, 0.3, 0)
 
     contours, _ = cv2.findContours(mask_cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 50]
@@ -78,20 +78,21 @@ def main():
     ])
 
     if "Земля" in work_mode:
-        def_h = (10, 35);
-        def_s = (40, 255);
+        def_h = (10, 35)
+        def_s = (40, 255)
         def_v = (50, 220)
     elif "Снег" in work_mode:
-        def_h = (0, 179);
-        def_s = (0, 50);
-        def_v = (0, 90)
+        def_h = (0, 179)
+        def_s = (0, 50)
+        # FIX #4: снег/асфальт — светлые пиксели, V должен быть высоким (было 0–90)
+        def_v = (180, 255)
     elif "Трава" in work_mode:
-        def_h = (30, 85);
-        def_s = (40, 255);
+        def_h = (30, 85)
+        def_s = (40, 255)
         def_v = (40, 255)
     else:
-        def_h = (0, 179);
-        def_s = (0, 255);
+        def_h = (0, 179)
+        def_s = (0, 255)
         def_v = (0, 255)
 
     st.sidebar.header("🎨 Тонкая настройка (HSV)")
@@ -131,37 +132,55 @@ def main():
                 tfile.write(uploaded_video.read())
                 tfile.close()
 
+                # FIX #2: try/finally гарантирует освобождение ресурсов даже при ошибке
                 cap = cv2.VideoCapture(tfile.name)
+                try:
+                    # FIX #6: получаем FPS видео для ограничения скорости обработки
+                    video_fps = cap.get(cv2.CAP_PROP_FPS)
+                    if video_fps <= 0:
+                        video_fps = 25.0
+                    frame_delay = 1.0 / video_fps
 
-                # Создаем пустые контейнеры для обновления интерфейса
-                video_placeholder = st.empty()
-                metrics_placeholder = st.empty()
+                    # Создаем пустые контейнеры для обновления интерфейса
+                    video_placeholder = st.empty()
+                    metrics_placeholder = st.empty()
 
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        st.balloons()
-                        st.success("Анализ видео завершен!")
-                        break
+                    while cap.isOpened():
+                        frame_start = time.time()
 
-                    # Обрабатываем кадр
-                    mask_cleaned, result_overlay, current_width = process_frame(frame, h_min, s_min, v_min, h_max, s_max, v_max)
-                    area_m2, _ = calculate_area(mask_cleaned, height_m, fov_deg, current_width, theta_deg)
+                        ret, frame = cap.read()
+                        if not ret:
+                            st.balloons()
+                            st.success("Анализ видео завершен!")
+                            break
 
-                    # Рисуем красивый HUD прямо на видеокадре
-                    cv2.rectangle(result_overlay, (20, 20), (500, 100), (0, 0, 0), -1) # Черная плашка
-                    cv2.putText(result_overlay, f"LIVE DETECT: {area_m2:,.1f} m2", (30, 70),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
+                        # Обрабатываем кадр
+                        mask_cleaned, result_overlay, current_width = process_frame(frame, h_min, s_min, v_min, h_max, s_max, v_max)
+                        area_m2, _ = calculate_area(mask_cleaned, height_m, fov_deg, current_width, theta_deg)
 
-                    # Отправляем кадр в интерфейс Streamlit
-                    video_placeholder.image(result_overlay, channels="RGB", use_container_width=True)
+                        # Рисуем красивый HUD прямо на видеокадре
+                        cv2.rectangle(result_overlay, (20, 20), (500, 100), (0, 0, 0), -1)  # Черная плашка
+                        cv2.putText(result_overlay, f"LIVE DETECT: {area_m2:,.1f} m2", (30, 70),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
 
-                    # Обновляем цифры под видео
-                    with metrics_placeholder.container():
-                        st.metric("Текущая видимая площадь работ", f"{area_m2:,.1f} м²")
+                        # Отправляем кадр в интерфейс Streamlit
+                        video_placeholder.image(result_overlay, channels="RGB", use_container_width=True)
 
-                cap.release()
-                os.unlink(tfile.name)
+                        # FIX #7: вызываем metric через контейнер, а не через глобальный st
+                        with metrics_placeholder.container():
+                            metrics_placeholder.metric("Текущая видимая площадь работ", f"{area_m2:,.1f} м²")
+
+                        # FIX #6: соблюдаем темп FPS, чтобы не перегружать браузер
+                        elapsed = time.time() - frame_start
+                        sleep_time = frame_delay - elapsed
+                        if sleep_time > 0:
+                            time.sleep(sleep_time)
+
+                finally:
+                    # FIX #2: всегда освобождаем видео и удаляем временный файл
+                    cap.release()
+                    if os.path.exists(tfile.name):
+                        os.unlink(tfile.name)
 
     # --- ВКЛАДКА 3: ЭКОНОМИКА ---
     with tab3:
@@ -171,7 +190,29 @@ def main():
         price_per_m2 = st.number_input("Цена 1 м² (руб):", value=50)
 
         diff = contractor_area - actual_area
-        st.metric("Сэкономлено бюджетов", f"{diff * price_per_m2:,.2f} руб", delta=f"Приписка: {diff} м²", delta_color="inverse")
+
+        # FIX #3: корректная логика для любого знака разницы
+        if diff > 0:
+            st.metric(
+                "Сэкономлено бюджетов",
+                f"{diff * price_per_m2:,.2f} руб",
+                delta=f"Приписка: {diff:.0f} м²",
+                delta_color="inverse"
+            )
+        elif diff < 0:
+            st.metric(
+                "Перерасход бюджета",
+                f"{abs(diff) * price_per_m2:,.2f} руб",
+                delta=f"Факт превышает заявку на {abs(diff):.0f} м²",
+                delta_color="normal"
+            )
+        else:
+            st.metric(
+                "Результат",
+                "0.00 руб",
+                delta="Факт совпадает с заявкой ✅",
+                delta_color="off"
+            )
 
 if __name__ == "__main__":
     main()
